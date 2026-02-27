@@ -26,31 +26,19 @@ Different crops have vastly different "thirst" levels. Our computational matrix 
 
 | Crop | Water Requirement (mm) | Soil Preference |
 | --- | --- | --- |
-| **Sugarcane** | 2200 mm 
-
- | Loamy 
-
- |
+| **Sugarcane** | 2200 mm | Loamy |
 | **Rice (Paddy)** | 1250 – 2000 mm 
 
- | Clay / Loamy 
-
- |
+ | Clay / Loamy |
 | **Cotton** | 500 – 1000 mm 
 
- | Alluvial / Black 
-
- |
+ | Alluvial / Black |
 | **Sorghum (Jowar)** | 500 mm 
 
- | Alluvial / Variable 
-
- |
+ | Alluvial / Variable  |
 | **Ragi** | 310 mm 
 
- | Variable / Arid 
-
- |
+ | Variable / Arid |
 
 ---
 
