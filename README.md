@@ -24,20 +24,33 @@ The agricultural calendar is dictated by the southwest monsoon, which provides o
 
 Different crops have vastly different "thirst" levels. Our computational matrix evaluates if a region’s rainfall meets these physiological thresholds:
 
-Crop | Water Requirement (mm) | Soil Preference |
+| Crop | Water Requirement (mm) | Soil Preference |
 | --- | --- | --- |
-**Sugarcane** | 2200 mm 
- Loamy 
- **Rice (Paddy)** | 1250 – 2000 mm 
- Clay / Loamy 
+| **Sugarcane** | 2200 mm 
 
-**Cotton** | 500 – 1000 mm 
- Alluvial / Black 
-**Sorghum (Jowar)** | 500 mm 
- Alluvial / Variable 
- **Ragi** | 310 mm 
- Variable / Arid 
+ | Loamy 
 
+ |
+| **Rice (Paddy)** | 1250 – 2000 mm 
+
+ | Clay / Loamy 
+
+ |
+| **Cotton** | 500 – 1000 mm 
+
+ | Alluvial / Black 
+
+ |
+| **Sorghum (Jowar)** | 500 mm 
+
+ | Alluvial / Variable 
+
+ |
+| **Ragi** | 310 mm 
+
+ | Variable / Arid 
+
+ |
 
 ---
 
