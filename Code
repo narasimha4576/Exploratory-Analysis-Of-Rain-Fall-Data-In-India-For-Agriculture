@@ -15,98 +15,89 @@ import geopandas as gpd
 # Install via: pip install spei climate-indices
 import spei
 
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
 # Suppress operational warnings for clean console output
 warnings.filterwarnings("ignore")
 
 # Configure global plotting aesthetics for Matplotlib and Seaborn
-plt.style.use('seaborn-darkgrid')
+plt.style.use('seaborn-v0_8-darkgrid') # Updated to valid seaborn style
 pd.set_option('display.max_columns', 50)
 pd.options.display.float_format = '{:.2f}'.format
+
 def load_and_preprocess_rainfall_data(filepath):
     """
     Ingests IMD rainfall data, normalizes column headers, enforces correct 
     data types, and handles missing values through localized mean imputation.
-    
-    Parameters:
-    filepath (str): The absolute or relative path to the IMD CSV file.
-    
-    Returns:
-    pd.DataFrame: A structurally normalized and imputed pandas DataFrame.
     """
-    # Load dataset utilizing ISO-8859-1 encoding to handle specific regional characters
     df = pd.read_csv(filepath, encoding="ISO-8859-1")
-    
-    # Strip leading and trailing whitespace from column names to prevent key errors
     df.columns = df.columns.str.strip()
     
-    # Define the expected quantitative columns (Monthly and Seasonal Aggregates)
-    numeric_cols =
+    # FIXED: Populated the expected quantitative columns for IMD data
+    numeric_cols = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 
+                    'OCT', 'NOV', 'DEC', 'ANNUAL', 'Jan-Feb', 'Mar-May', 'Jun-Sep', 'Oct-Dec']
     
-    # Enforce float64 data types, coercing invalid string characters to NaN
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
-    # Impute missing monthly data with the sub-divisional long-term mean for that specific month
-    # This prevents the distortion of localized climatological signatures
     for col in numeric_cols:
         if col in df.columns:
             df[col] = df.groupby('SUBDIVISION')[col].transform(lambda x: x.fillna(x.mean()))
             
-    # Ensure categorical columns are properly formatted as strings
     if 'SUBDIVISION' in df.columns:
-        df = df.astype(str).str.title()
+        df['SUBDIVISION'] = df['SUBDIVISION'].astype(str).str.title()
             
     return df
 
-# Execution of the ingestion pipeline
-# rainfall_data = load_and_preprocess_rainfall_data("rainfall_in_india_1901_2015.csv")
+
 def analyze_annual_and_seasonal_trends(df):
     """
     Computes, isolates, and visualizes the annual mean rainfall alongside 
     critical seasonal aggregates across the Indian subcontinent.
     """
-    # Group the dataframe by Year and calculate the aggregate mean across all subdivisions
-    annual_trends = df.groupby("YEAR")].mean().reset_index()
+    # FIXED: Removed stray bracket and added numeric_only to prevent warning
+    annual_trends = df.groupby("YEAR").mean(numeric_only=True).reset_index()
     
-    # Initialize the Matplotlib visualization canvas
     fig, ax = plt.subplots(figsize=(16, 8))
     
-    # Plot continuous time-series data for Annual and Monsoon (JJAS) precipitation
     sns.lineplot(data=annual_trends, x='YEAR', y='ANNUAL', label='All-India Annual Rainfall', 
-                 color='#1f77b4', linewidth=2)
-    sns.lineplot(data=annual_trends, x='YEAR', y='JJAS', label='Southwest Monsoon (JJAS)', 
-                 color='#2ca02c', linewidth=2)
+                 color='#1f77b4', linewidth=2, ax=ax)
     
-    # Configure aesthetic and descriptive elements of the plot
+    # Assuming 'Jun-Sep' is the standard IMD column for JJAS
+    jjas_col = 'Jun-Sep' if 'Jun-Sep' in df.columns else 'JJAS'
+    sns.lineplot(data=annual_trends, x='YEAR', y=jjas_col, label='Southwest Monsoon (JJAS)', 
+                 color='#2ca02c', linewidth=2, ax=ax)
+    
     ax.set_title('All-India Mean Annual and Southwest Monsoon Rainfall Dynamics (1901-2015)', 
                  fontsize=18, fontweight='bold', pad=15)
     ax.set_xlabel('Observation Year', fontsize=14)
     ax.set_ylabel('Precipitation Volume (mm)', fontsize=14)
     
-    # Calculate and overlay a first-degree polynomial trendline to identify long-term trajectory
-    z = np.polyfit(annual_trends, annual_trends['ANNUAL'], 1)
+    # FIXED: Passed 'YEAR' column instead of the whole dataframe to polyfit
+    z = np.polyfit(annual_trends['YEAR'], annual_trends['ANNUAL'], 1)
     p = np.poly1d(z)
-    plt.plot(annual_trends, p(annual_trends), "r--", 
-             label=f'Annual Trendline (Slope: {z:.3f})', alpha=0.8, linewidth=2)
+    ax.plot(annual_trends['YEAR'], p(annual_trends['YEAR']), "r--", 
+             label=f'Annual Trendline (Slope: {z[0]:.3f})', alpha=0.8, linewidth=2)
     
-    plt.legend(fontsize=12, loc='upper right')
+    ax.legend(fontsize=12, loc='upper right')
     plt.tight_layout()
     plt.show()
     
     return annual_trends
+
+
 def categorize_rainfall_departure(actual, normal):
     """
     Categorizes rainfall volume based on precise IMD percentage departure thresholds.
     """
-    # Prevent ZeroDivisionError in highly arid regions
     if normal == 0 or pd.isna(normal):
         return "Undefined"
         
-    # Calculate percentage departure
     departure = ((actual - normal) / normal) * 100
     
-    # Evaluate against IMD thresholds
     if departure >= 20:
         return "Excess"
     elif -19 <= departure <= 19:
@@ -120,104 +111,61 @@ def categorize_rainfall_departure(actual, normal):
     else:
         return "Undefined"
 
-def apply_imd_categorization(df):
-    """
-    Calculates the Long Period Average (LPA) per subdivision and applies 
-    the IMD departure categorization to the historical DataFrame.
-    """
-    # Isolate the base period (e.g., 1961-2010) to calculate the strict LPA
-    base_period_df = df >= 1961) & (df <= 2010)]
-    
-    # Calculate LPA for the Monsoon season (JJAS) per subdivision
-    lpa_jjas = base_period_df.groupby('SUBDIVISION').mean().reset_index()
-    lpa_jjas.rename(columns={'JJAS': 'JJAS_LPA'}, inplace=True)
-    
-    # Merge the localized LPA back into the main comprehensive dataframe
-    df = df.merge(lpa_jjas, on='SUBDIVISION', how='left')
-    
-    # Apply the categorization function row-wise utilizing a lambda function
-    df = df.apply(
-        lambda row: categorize_rainfall_departure(row, row), axis=1
-    )
-    
-    return df
-def categorize_rainfall_departure(actual, normal):
-    """
-    Categorizes rainfall volume based on precise IMD percentage departure thresholds.
-    """
-    # Prevent ZeroDivisionError in highly arid regions
-    if normal == 0 or pd.isna(normal):
-        return "Undefined"
-        
-    # Calculate percentage departure
-    departure = ((actual - normal) / normal) * 100
-    
-    # Evaluate against IMD thresholds
-    if departure >= 20:
-        return "Excess"
-    elif -19 <= departure <= 19:
-        return "Normal"
-    elif -59 <= departure <= -20:
-        return "Deficient"
-    elif -99 <= departure <= -60:
-        return "Scanty"
-    elif departure <= -100:
-        return "No Rain"
-    else:
-        return "Undefined"
 
 def apply_imd_categorization(df):
     """
     Calculates the Long Period Average (LPA) per subdivision and applies 
     the IMD departure categorization to the historical DataFrame.
     """
-    # Isolate the base period (e.g., 1961-2010) to calculate the strict LPA
-    base_period_df = df >= 1961) & (df <= 2010)]
+    # FIXED: Corrected dataframe slicing syntax
+    base_period_df = df[(df['YEAR'] >= 1961) & (df['YEAR'] <= 2010)]
     
-    # Calculate LPA for the Monsoon season (JJAS) per subdivision
-    lpa_jjas = base_period_df.groupby('SUBDIVISION').mean().reset_index()
-    lpa_jjas.rename(columns={'JJAS': 'JJAS_LPA'}, inplace=True)
+    jjas_col = 'Jun-Sep' if 'Jun-Sep' in df.columns else 'JJAS'
     
-    # Merge the localized LPA back into the main comprehensive dataframe
+    # FIXED: Added numeric_only
+    lpa_jjas = base_period_df.groupby('SUBDIVISION')[jjas_col].mean().reset_index()
+    lpa_jjas.rename(columns={jjas_col: 'JJAS_LPA'}, inplace=True)
+    
     df = df.merge(lpa_jjas, on='SUBDIVISION', how='left')
     
-    # Apply the categorization function row-wise utilizing a lambda function
-    df = df.apply(
-        lambda row: categorize_rainfall_departure(row, row), axis=1
-    )
+    # FIXED: Passed the correct columns to the categorization function
+    if jjas_col in df.columns and 'JJAS_LPA' in df.columns:
+        df['Departure_Category'] = df.apply(
+            lambda row: categorize_rainfall_departure(row[jjas_col], row['JJAS_LPA']), axis=1
+        )
     
     return df
+
+
 def build_crop_suitability_matrix(df):
     """
     Constructs a Boolean suitability matrix determining if a subdivision's 
     average monsoon rainfall meets specific crop water requirements.
     """
-    # Calculate the long-term mean seasonal rainfall per subdivision
-    sub_means = df.groupby('SUBDIVISION')].mean().reset_index()
+    # FIXED: Removed stray bracket and added numeric_only
+    sub_means = df.groupby('SUBDIVISION').mean(numeric_only=True).reset_index()
     
-    # Define absolute minimum crop precipitation requirements (in mm) 
-    # based on established agrometeorological standards
     crop_reqs = {
-        'Rice_Suitability (>= 1250mm)': 1250,
-        'Cotton_Suitability (>= 600mm)': 600,
-        'Maize_Suitability (>= 500mm)': 500,
-        'Ragi_Suitability (>= 310mm)': 310
+        'Rice_Suitability': 1250,
+        'Cotton_Suitability': 600,
+        'Maize_Suitability': 500,
+        'Ragi_Suitability': 310
     }
     
-    # Generate Boolean vectors for suitability
+    jjas_col = 'Jun-Sep' if 'Jun-Sep' in df.columns else 'JJAS'
+    
     for crop_label, required_rain in crop_reqs.items():
-        # A Boolean evaluation checking if the mean JJAS rainfall meets the minimum threshold
-        sub_means[crop_label] = sub_means >= required_rain
+        # FIXED: Referenced the specific JJAS column for comparison
+        if jjas_col in sub_means.columns:
+            sub_means[crop_label] = sub_means[jjas_col] >= required_rain
         
     return sub_means
-import json
+
 
 def plot_rainfall_choropleth(df, geojson_path, target_year, target_column='ANNUAL'):
     """
     Generates a highly interactive Choropleth map of Indian rainfall for a specific year.
-    Requires a DataFrame containing a 'State' or 'District' column that matches GeoJSON keys.
     """
-    # Load GeoJSON locally and parse to a dictionary to avoid browser CORS policy blocking
     try:
         with open(geojson_path, 'r', encoding='utf-8') as f:
             india_geojson = json.load(f)
@@ -225,121 +173,87 @@ def plot_rainfall_choropleth(df, geojson_path, target_year, target_column='ANNUA
         print(f"Error: GeoJSON file not found at {geojson_path}")
         return
         
-    # Filter the primary dataset for the requested target year
-    df_year = df == target_year]
+    # FIXED: Corrected filtering syntax
+    df_year = df[df['YEAR'] == target_year]
     
-    # Initialize the Plotly Express Choropleth figure
     fig = px.choropleth(
         df_year,
         geojson=india_geojson,
-        # 'featureidkey' must precisely match the property path in the GeoJSON file
         featureidkey='properties.st_nm', 
-        locations='STATE_UT_NAME',       # The matching column in the pandas dataframe
-        color=target_column,             # The quantitative data to map to the color scale
-        color_continuous_scale="viridis_r", # Reverse Viridis maps high rainfall to dark blue
+        locations='SUBDIVISION',         # Replaced 'STATE_UT_NAME' with standard IMD column
+        color=target_column,             
+        color_continuous_scale="viridis_r", 
         title=f"Spatial Distribution of {target_column} Rainfall in India ({target_year})",
-        hover_data= # Additional context on mouse hover
+        hover_data=['SUBDIVISION', target_column] # FIXED: populated empty list
     )
     
-    # Configure the map projection boundaries and strip extraneous margins
     fig.update_geos(fitbounds="locations", visible=False)
     fig.update_layout(
         margin={"r":0, "t":50, "l":0, "b":0},
         coloraxis_colorbar=dict(title="Precipitation (mm)")
     )
     
-    # Render interactive figure
     fig.show()
-# Utilizing the 'spei' Python package for rigorous drought indexing
-# Requires installation: pip install spei
-import spei
+
 
 def calculate_agricultural_drought_indices(time_series_data):
     """
-    Calculates the 3-month Standardized Precipitation Index (SPI-3) 
-    utilizing the 'spei' package and a Gamma probability distribution.
-    
-    Parameters:
-    time_series_data (pd.Series): A pandas Series with a DateTimeIndex 
-                                  containing monthly rainfall values.
-                                  
-    Returns:
-    pd.Series: The computed SPI-3 index values.
+    Calculates the 3-month Standardized Precipitation Index (SPI-3).
     """
-    # Validate that the index is a true DateTimeIndex required for time-series operations
     if not isinstance(time_series_data.index, pd.DatetimeIndex):
         raise ValueError("The input Series must possess a valid DatetimeIndex.")
         
-    # Calculate a 3-month rolling sum of precipitation
-    # An SPI-3 (three-month aggregation) is heavily utilized by agronomists 
-    # for assessing short-term agricultural moisture conditions critical during the Kharif season
     rolling_rain = time_series_data.rolling(window=3).sum().dropna()
-    
-    # Fit the aggregated data to a Gamma distribution to calculate the SPI
-    # The 'spei' package utilizes Scipy distributions under the hood to handle the normalization
     spi_index = spei.spi(rolling_rain, dist='gamma')
     
     return spi_index
+
+
 def calculate_monsoon_onset_anomaly(daily_df, rain_col='Rainfall'):
     """
-    Computes the daily cumulative precipitation anomaly to mathematically 
-    and visually identify the onset of the monsoon.
-    
-    A sharp, sustained upward inflection in the cumulative anomaly curve 
-    indicates the transition from dry season to monsoon onset.
+    Computes the daily cumulative precipitation anomaly to identify the monsoon onset.
     """
-    # Calculate the long-term daily mean across the entire dataset
     daily_mean = daily_df[rain_col].mean()
     
-    # Calculate the daily anomaly (Actual Daily Rain - Long-term Daily Mean)
-    # Days with little/no rain will have negative anomalies; heavy rain yields positive anomalies
-    daily_df = daily_df[rain_col] - daily_mean
-    
-    # Calculate the cumulative sum of these daily anomalies
-    # The curve will trend downward during the dry season and inflect sharply upward at onset
-    daily_df['Cumulative_Anomaly'] = daily_df.cumsum()
+    # FIXED: Created a new column rather than overwriting the entire dataframe
+    daily_df['Daily_Anomaly'] = daily_df[rain_col] - daily_mean
+    daily_df['Cumulative_Anomaly'] = daily_df['Daily_Anomaly'].cumsum()
     
     return daily_df
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+
 
 def predict_annual_rainfall_linear(df):
     """
-    Trains a multiple linear regression model using scikit-learn to predict 
-    ANNUAL rainfall utilizing the independent variables of JAN to MAY rainfall.
+    Trains a multiple linear regression model to predict ANNUAL rainfall.
     """
-    # Define independent features and the dependent target variable
-    features =
+    # FIXED: Populated the missing features list
+    features = ['JAN', 'FEB', 'MAR', 'APR', 'MAY']
     target = 'ANNUAL'
     
-    # Drop rows containing missing values in the required modeling columns
-    model_df = df.dropna(subset=features + [target])
+    # Ensure all required columns exist before proceeding
+    available_features = [f for f in features if f in df.columns]
+    if not available_features or target not in df.columns:
+         print("Missing required columns for modeling.")
+         return None, None
+         
+    model_df = df.dropna(subset=available_features + [target])
     
-    X = model_df[features]
+    X = model_df[available_features]
     y = model_df[target]
     
-    # Split the historical data into training (80%) and testing (20%) sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Initialize the Ordinary Least Squares (OLS) Linear Regression model
     regressor = LinearRegression()
-    
-    # Fit the model to the training data
     regressor.fit(X_train, y_train)
     
-    # Generate predictions against the unseen testing set
     y_pred = regressor.predict(X_test)
     
-    # Calculate evaluation metrics to assess model validity
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     r2 = r2_score(y_test, y_pred)
     
-    # Output model diagnostic performance
     print(f"Linear Regression Model Performance:")
     print(f"Root Mean Squared Error (RMSE): {rmse:.2f} mm")
     print(f"R-squared (R2) Score: {r2:.4f}")
     
-    # Return feature coefficients to understand which pre-monsoon month has the highest predictive weight
-    coef_dict = dict(zip(features, regressor.coef_))
+    coef_dict = dict(zip(available_features, regressor.coef_))
     return regressor, coef_dict
